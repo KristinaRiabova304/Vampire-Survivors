@@ -1,0 +1,84 @@
+AI USAGE — Survivors (Vampire Survivors prototype)
+====================================================
+
+Інструмент: Claude Code (Anthropic).
+
+Відповідно до "Правила AI" із завдання, AI використовувався точково — для окремих
+задач (пояснення API, дебаг, приклад одного компонента, рефакторинг, аналіз
+власного коду), а не одним промптом на всю гру одразу. Нижче — по кожній
+системі: що вона робить, як пов'язана з іншими, і яку саме допомогу AI тут
+надавав.
+
+1. Player — PlayerController.cs
+   Рух по X/Y через Rigidbody2D.linearVelocity, вхід з GameInput.Move(),
+   freezeRotation щоб не крутило від зіткнень, опційне обмеження арени.
+   AI-допомога: приклад компонента руху на Rigidbody2D (а не Transform),
+   пояснення різниці freezeRotation vs constraints.
+
+2. Enemy — Enemy.cs
+   Переслідує PlayerController.Instance, завдає контактний урон через
+   Health гравця (з інтервалом damageInterval, не щокадрово), має
+   knockback при отриманні урону і статичну подію AnyEnemyDied, на яку
+   підписані GameManager (рахунок), XPDropper (дроп XP) і
+   EnemyDeathEffects (партикли/звук) — сам Enemy про них нічого не знає.
+   AI-допомога: рефакторинг "хто на кого посилається" у бік
+   event-based зв'язку замість прямих викликів між Enemy і UI/ефектами.
+
+3. Health і Damage — Health.cs
+   Спільний компонент для Player і Enemy: TakeDamage, подія Damaged
+   (на неї вішається hit-feedback: спалах кольором + scale punch) і
+   подія Died.
+   AI-допомога: аналіз власного коду — чому TakeDamage/Died варто
+   винести в окремий компонент, а не дублювати в Player і Enemy.
+
+4. Automatic Weapon — AutoWeapon.cs, Projectile.cs
+   AutoWeapon кожні attackInterval шукає найближчого живого Enemy
+   (перебір Enemy.All) і бере снаряд з ProjectilePool. Projectile летить,
+   завдає урон по Health ворога і повертається в пул (не Destroy).
+   AI-допомога: дебаг пошуку найближчої цілі (перебір через sqrMagnitude
+   замість Distance — продуктивність) і пояснення API object pooling.
+
+5. Enemy Spawner — EnemySpawner.cs
+   Спавнить вороги по колу навколо гравця між minSpawnDistance і
+   maxSpawnDistance, вибирає тип ворога за вагами (startWeight →
+   endWeight), а interval/maxEnemies інтерполюються по часу
+   (rampDuration) — звідси й складність з часом.
+   AI-допомога: приклад зваженого випадкового вибору (weighted random)
+   як окремого методу PickType().
+
+6. Gameplay Loop, HUD, XP, Level Up — GameManager.cs, PlayerLevel.cs,
+   XPPickup.cs, XPDropper.cs, UIBar.cs
+   GameManager підписаний на Enemy.AnyEnemyDied (рахунок/кіли) і на
+   PlayerLevel.LeveledUp (показ панелі левел-апу з паузою
+   Time.timeScale = 0 і трьома кнопками апгрейдів). XPDropper створює
+   XPPickup у точці смерті ворога; гравець підбирає його, PlayerLevel
+   рахує досвід і піднімає рівень.
+   AI-допомога: пояснення API Time.timeScale для паузи саме геймплею
+   без зупинки UI, дебаг порядку викликів при одночасному level-up
+   кількох рівнів підряд (pendingLevelUps).
+
+7. Death Polish, Hit Feedback — EnemyDeathEffects.cs, SoundFX.cs
+   EnemyDeathEffects і SoundFX теж підписані на Enemy.AnyEnemyDied:
+   партикли кольору ворога + коротка анімація стиснення/обертання в
+   Enemy.DeathAnimation(), звук. SoundFX генерує прості тони кодом
+   (AudioClip.Create), якщо файли звуків не підставлені в Inspector.
+   AI-допомога: приклад генерації звуку хвилею без аудіофайлів
+   (AudioClip.Create) — окремий ізольований компонент.
+
+8. Object Pool — ProjectilePool.cs
+   Черга переюзаних Projectile замість Instantiate/Destroy на кожен
+   постріл.
+   AI-допомога: приклад базового пулу об'єктів (Queue<T> + Get/Release).
+
+9. GameBuilder.cs (Editor)
+   Допоміжний редакторський скрипт (Tools → Survivors → Build Game):
+   генерує спрайти кодом, збирає префаби та сцену з UI, щоб не робити
+   це вручну через Inspector з нуля. Після збірки всі параметри так
+   само редагуються в Inspector.
+   AI-допомога: рефакторинг одного великого методу білда сцени на
+   дрібніші (MakeEnemy, MakeProjectile, MakeText, MakeBar тощо).
+
+Що AI НЕ робив: не генерував усю гру одним промптом і не писав
+одразу повний набір скриптів без перевірки — кожна система
+допрацьовувалась і тестувалась окремо (запуск у Play Mode, перевірка
+Console на помилки) перед переходом до наступного пункту завдання.
